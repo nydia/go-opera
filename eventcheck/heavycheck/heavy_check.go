@@ -65,7 +65,7 @@ type taskData struct {
 }
 
 // New validator which performs heavy checks, related to signatures validation and Merkle tree validation
-// 新的验证器，执行与签名验证和默克尔树验证有关的重度检查。
+// 新的验证器，执行与签名验证和默克尔树验证有关的重度检查。相当于一个构造体
 func New(config Config, reader Reader, txSigner types.Signer) *Checker {
 	if config.Threads == 0 {
 		//运行环境的cpu数量：如果cpu数量 > 1,线程数量设置 减去 1，也就是运行线程数量始终是cpu - 1，最小为1
