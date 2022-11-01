@@ -1,3 +1,5 @@
+//这个文件我立即是作为一个适配器，检查
+
 package heavycheck
 
 import (
@@ -6,14 +8,17 @@ import (
 	"github.com/Fantom-foundation/go-opera/inter"
 )
 
+// 仅事件检查结构体
 type EventsOnly struct {
 	*Checker
 }
 
+// 入队检查
 func (c *EventsOnly) Enqueue(e dag.Event, onValidated func(error)) error {
 	return c.Checker.EnqueueEvent(e.(inter.EventPayloadI), onValidated)
 }
 
+// 仅事件检查结构体
 type BVsOnly struct {
 	*Checker
 }

@@ -13,6 +13,7 @@ import (
 	"github.com/Fantom-foundation/go-opera/inter"
 )
 
+// 定义错误变量
 var (
 	ErrWrongNetForkID = errors.New("wrong network fork ID")
 	ErrZeroTime       = errors.New("event has zero timestamp")
@@ -35,11 +36,15 @@ var (
 	EmptyBVs          = errors.New("empty BVs")
 )
 
+// 常量定义
 const (
+	// 每个事件的最大投票数
 	MaxBlockVotesPerEvent = 64
-	MaxLiableEpochs       = 32768
+	//最大有效纪元（我理解是最大有效时间）
+	MaxLiableEpochs = 32768
 )
 
+// 定义Checker构造结构，里面的属性继承自  base里面的Checker
 type Checker struct {
 	base base.Checker
 }

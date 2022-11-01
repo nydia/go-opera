@@ -19,8 +19,8 @@ var (
 	ErrUndecidedBR           = errors.New("BR is unprocessable yet")
 	ErrUndecidedER           = errors.New("ER is unprocessable yet")
 	ErrAlreadyConnectedEvent = base.ErrAlreadyConnectedEvent
-	ErrSpilledEvent          = base.ErrSpilledEvent
-	ErrDuplicateEvent        = base.ErrDuplicateEvent
+	ErrSpilledEvent          = base.ErrSpilledEvent   //溢出事件
+	ErrDuplicateEvent        = base.ErrDuplicateEvent //重复事件
 )
 
 func IsBan(err error) bool {
