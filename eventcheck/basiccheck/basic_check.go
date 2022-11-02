@@ -58,13 +58,16 @@ func New() *Checker {
 
 // validateTx checks whether a transaction is valid according to the consensus
 // rules
+// 验证交易
 func validateTx(tx *types.Transaction) error {
 	// Transactions can't be negative. This may never happen using RLP decoded
 	// transactions but may occur if you create a transaction using the RPC.
+	//交易的 以太币 签名验证  和    交易的gas价格校验
 	if tx.Value().Sign() < 0 || tx.GasPrice().Sign() < 0 {
 		return ErrNegativeValue
 	}
 	// Ensure the transaction has more gas than the basic tx fee.
+	//确保交易的gas值大于基础的交易费用
 	intrGas, err := evmcore.IntrinsicGas(tx.Data(), tx.AccessList(), tx.To() == nil)
 	if err != nil {
 		return err
@@ -72,15 +75,17 @@ func validateTx(tx *types.Transaction) error {
 	if tx.Gas() < intrGas {
 		return ErrIntrinsicGas
 	}
-
+	//计算  交易的费用上限相对于给定的费用上限。
 	if tx.GasFeeCapIntCmp(tx.GasTipCap()) < 0 {
 		return ErrTipAboveFeeCap
 	}
 	return nil
 }
 
+// 各种错误行为的检查
 func (v *Checker) validateMP(msgEpoch idx.Epoch, mp inter.MisbehaviourProof) error {
 	count := 0
+	//双重签名校验
 	if proof := mp.EventsDoublesign; proof != nil {
 		count++
 		if err := v.validateEventLocator(proof.Pair[0].Locator); err != nil {
@@ -105,6 +110,7 @@ func (v *Checker) validateMP(msgEpoch idx.Epoch, mp inter.MisbehaviourProof) err
 			return ErrMPTooLate
 		}
 	}
+	//块选择双重签名校验
 	if proof := mp.BlockVoteDoublesign; proof != nil {
 		count++
 		if err := v.ValidateBVs(proof.Pair[0]); err != nil {
@@ -129,6 +135,7 @@ func (v *Checker) validateMP(msgEpoch idx.Epoch, mp inter.MisbehaviourProof) err
 			return ErrMPTooLate
 		}
 	}
+	//错误的块选择
 	if proof := mp.WrongBlockVote; proof != nil {
 		count++
 		for i, pal := range proof.Pals {
@@ -158,6 +165,7 @@ func (v *Checker) validateMP(msgEpoch idx.Epoch, mp inter.MisbehaviourProof) err
 			}
 		}
 	}
+	//有效期内的投票双签名
 	if proof := mp.EpochVoteDoublesign; proof != nil {
 		count++
 		if err := v.ValidateEV(proof.Pair[0]); err != nil {
@@ -205,6 +213,7 @@ func (v *Checker) validateMP(msgEpoch idx.Epoch, mp inter.MisbehaviourProof) err
 	return nil
 }
 
+// 循环检测交易（包括交易的gas值）
 func (v *Checker) checkTxs(e inter.EventPayloadI) error {
 	for _, tx := range e.Txs() {
 		if err := validateTx(tx); err != nil {
@@ -215,6 +224,7 @@ func (v *Checker) checkTxs(e inter.EventPayloadI) error {
 }
 
 // Validate event
+// 我理解是验证事件入口
 func (v *Checker) Validate(e inter.EventPayloadI) error {
 	if e.NetForkID() != 0 {
 		return ErrWrongNetForkID
@@ -280,22 +290,28 @@ func (v *Checker) validateBVs(eventEpoch idx.Epoch, bvs inter.LlrBlockVotes, gre
 	return nil
 }
 
+// ev验证
 func (v *Checker) validateEV(eventEpoch idx.Epoch, ev inter.LlrEpochVote, greedy bool) error {
+	//ev有效期 大于  事件 有效期
 	if ev.Epoch > eventEpoch {
 		return FutureEVEpoch
 	}
+	//有效期是否为 0 且 ev的选择是否是hash值为0
 	if (ev.Epoch == 0) != (ev.Vote == hash.Zero) {
 		return MalformedEV
 	}
+	//有效性的时间戳 >= MaxInt 则报错
 	if ev.Epoch >= math.MaxInt32-1 {
 		return base.ErrHugeValue
 	}
+	//字面意思是贪婪的
 	if greedy && ev.Epoch == 0 {
 		return EmptyEV
 	}
 	return nil
 }
 
+// 下面的两个方法验证 bvs 和 ev
 func (v *Checker) ValidateBVs(bvs inter.LlrSignedBlockVotes) error {
 	if err := v.validateEventLocator(bvs.Signed.Locator); err != nil {
 		return err

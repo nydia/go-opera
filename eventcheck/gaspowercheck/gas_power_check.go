@@ -14,6 +14,7 @@ import (
 	"github.com/Fantom-foundation/go-opera/inter/iblockproc"
 )
 
+// 定义常量： 看是否错误的定义了 剩余的gas值计算
 var (
 	// ErrWrongGasPowerLeft indicates that event's GasPowerLeft is miscalculated.
 	ErrWrongGasPowerLeft = errors.New("event has wrong GasPowerLeft")
@@ -34,11 +35,13 @@ type ValidationContext struct {
 }
 
 // Reader is accessed by the validator to get the current state.
+// 定义 本地状态 可以访问的 Reader
 type Reader interface {
 	GetValidationContext() *ValidationContext
 }
 
 // Config for gaspower checking. There'll be 2 different configs for short-term and long-term gas power checks.
+// 定义配置：gas值计算 检查。这个又两种配置，一个短的，一个长度，，没理解啥意思？
 type Config struct {
 	Idx                int
 	AllocPerSec        uint64
@@ -49,21 +52,25 @@ type Config struct {
 }
 
 // Checker which checks gas power
+// 本地输入作为属性，构建Checker结构体
 type Checker struct {
 	reader Reader
 }
 
 // New Checker for gas power
+// 以单例方式构建 Checker实例
 func New(reader Reader) *Checker {
 	return &Checker{
 		reader: reader,
 	}
 }
 
+// 减法
 func mul(a *big.Int, b uint64) {
 	a.Mul(a, new(big.Int).SetUint64(b))
 }
 
+// 除法
 func div(a *big.Int, b uint64) {
 	a.Div(a, new(big.Int).SetUint64(b))
 }

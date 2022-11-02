@@ -57,6 +57,7 @@ func AsSignedEventLocator(e EventPayloadI) SignedEventLocator {
 	}
 }
 
+// 事件的域，我理解也就是事件的属性值列表
 type EventPayloadI interface {
 	EventI
 	Sig() Signature

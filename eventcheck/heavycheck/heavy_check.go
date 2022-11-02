@@ -88,20 +88,24 @@ func New(config Config, reader Reader, txSigner types.Signer) *Checker {
 
 func (v *Checker) Start() {
 	for i := 0; i < v.config.Threads; i++ {
+		//信号量 +1
 		v.wg.Add(1)
 		go v.loop()
 	}
 }
 
+// 停止检查
 func (v *Checker) Stop() {
 	close(v.quit)
 	v.wg.Wait()
 }
 
+// 检查线程是否溢出
 func (v *Checker) Overloaded() bool {
 	return len(v.tasksQ) > v.config.MaxQueuedTasks/2
 }
 
+// 检查事件入队列
 func (v *Checker) EnqueueEvent(e inter.EventPayloadI, onValidated func(error)) error {
 	op := &taskData{
 		event:       e,
@@ -115,6 +119,7 @@ func (v *Checker) EnqueueEvent(e inter.EventPayloadI, onValidated func(error)) e
 	}
 }
 
+// bvs 入队列
 func (v *Checker) EnqueueBVs(bvs inter.LlrSignedBlockVotes, onValidated func(error)) error {
 	op := &taskData{
 		bvs:         &bvs,
@@ -128,6 +133,7 @@ func (v *Checker) EnqueueBVs(bvs inter.LlrSignedBlockVotes, onValidated func(err
 	}
 }
 
+// ev 入队列
 func (v *Checker) EnqueueEV(ev inter.LlrSignedEpochVote, onValidated func(error)) error {
 	op := &taskData{
 		ev:          &ev,
@@ -142,6 +148,7 @@ func (v *Checker) EnqueueEV(ev inter.LlrSignedEpochVote, onValidated func(error)
 }
 
 // verifySignature checks the signature against e.Creator.
+// 用户公钥验证签名：参数：签名的hash值，签名值，公钥
 func verifySignature(signedHash hash.Hash, sig inter.Signature, pubkey validatorpk.PubKey) bool {
 	if pubkey.Type != validatorpk.Types.Secp256k1 {
 		return false
@@ -149,7 +156,9 @@ func verifySignature(signedHash hash.Hash, sig inter.Signature, pubkey validator
 	return crypto.VerifySignature(pubkey.Raw, signedHash.Bytes(), sig.Bytes())
 }
 
+// 本地事件验证
 func (v *Checker) ValidateEventLocator(e inter.SignedEventLocator, authEpoch idx.Epoch, authErr error, checkPayload func() bool) error {
+	//获取有效期内的公钥
 	pubkeys := v.reader.GetEpochPubKeysOf(authEpoch)
 	if len(pubkeys) == 0 {
 		return authErr
@@ -161,70 +170,88 @@ func (v *Checker) ValidateEventLocator(e inter.SignedEventLocator, authEpoch idx
 	if checkPayload != nil && !checkPayload() {
 		return ErrWrongPayloadHash
 	}
+	//开始验证签名
 	if !verifySignature(e.Locator.HashToSign(), e.Sig, pubkey) {
 		return ErrWrongEventSig
 	}
 	return nil
 }
 
+// 匹配公钥
 func (v *Checker) matchPubkey(creator idx.ValidatorID, epoch idx.Epoch, want []byte, authErr error) error {
+	//获取有效期内的公钥
 	pubkeys := v.reader.GetEpochPubKeysOf(epoch)
+	//验证公钥长度
 	if len(pubkeys) == 0 {
 		return authErr
 	}
+	//验证公钥有效性
 	pubkey, ok := pubkeys[creator]
 	if !ok {
 		return epochcheck.ErrAuth
 	}
+	//验证公钥的完整性
 	if bytes.Compare(pubkey.Bytes(), want) != 0 {
 		return ErrPubkeyChanged
 	}
 	return nil
 }
 
+// 验证bvs有效性
 func (v *Checker) validateBVsEpoch(bvs inter.LlrBlockVotes) error {
 	actualEpochStart := v.reader.GetEpochBlockStart(bvs.Epoch)
 	if actualEpochStart == 0 {
 		return ErrUnknownEpochBVs
 	}
+	//bvs的开始时间 < 实际的开始时间 || bvs最后投票时间 > 实际的投票时间 + 最大的投票纪元(周期)
 	if bvs.Start < actualEpochStart || bvs.LastBlock() >= actualEpochStart+MaxBlocksPerEpoch {
 		return ErrImpossibleBVsEpoch
 	}
 	return nil
 }
 
+// 验证bvs
 func (v *Checker) ValidateBVs(bvs inter.LlrSignedBlockVotes) error {
 	if err := v.validateBVsEpoch(bvs.Val); err != nil {
 		return err
 	}
 	return v.ValidateEventLocator(bvs.Signed, bvs.Val.Epoch, ErrUnknownEpochBVs, func() bool {
+		//计算域的hash值 是否等于  bvs本地签名的域hash值（也就是把bvs参数里面的域hash值和本地的hash值对比）
 		return bvs.CalcPayloadHash() == bvs.Signed.Locator.PayloadHash
 	})
 }
 
+// 验证ev
 func (v *Checker) ValidateEV(ev inter.LlrSignedEpochVote) error {
 	return v.ValidateEventLocator(ev.Signed, ev.Val.Epoch-1, ErrUnknownEpochEV, func() bool {
+		//计算域的hash值 是否等于  bvs本地签名的域hash值（也就是把bvs参数里面的域hash值和本地的hash值对比）
 		return ev.CalcPayloadHash() == ev.Signed.Locator.PayloadHash
 	})
 }
 
 // ValidateEvent runs heavy checks for event
+// 这应该是签名事件的开始位置了
 func (v *Checker) ValidateEvent(e inter.EventPayloadI) error {
+	//获取公钥  和 有效期
 	pubkeys, epoch := v.reader.GetEpochPubKeys()
 	if e.Epoch() != epoch {
 		return epochcheck.ErrNotRelevant
 	}
 	// validatorID
+	//验证的身份id，应该就是唯一性了
 	pubkey, ok := pubkeys[e.Creator()]
 	if !ok {
 		return epochcheck.ErrAuth
 	}
 	// event sig
+	//验证签名
 	if !verifySignature(e.HashToSign(), e.Sig(), pubkey) {
 		return ErrWrongEventSig
 	}
 	// MPs
+	//各种行为的的验证
 	for _, mp := range e.MisbehaviourProofs() {
+		//事件双重签名校验
 		if proof := mp.EventsDoublesign; proof != nil {
 			for _, vote := range proof.Pair {
 				if err := v.ValidateEventLocator(vote, vote.Locator.Epoch, ErrUnknownEpochEventLocator, nil); err != nil {
@@ -232,6 +259,7 @@ func (v *Checker) ValidateEvent(e inter.EventPayloadI) error {
 				}
 			}
 		}
+		//块选择双重签名校验
 		if proof := mp.BlockVoteDoublesign; proof != nil {
 			for _, vote := range proof.Pair {
 				if err := v.ValidateBVs(vote); err != nil {
@@ -239,6 +267,7 @@ func (v *Checker) ValidateEvent(e inter.EventPayloadI) error {
 				}
 			}
 		}
+		//错误的选举投票
 		if proof := mp.WrongBlockVote; proof != nil {
 			for _, pal := range proof.Pals {
 				if err := v.ValidateBVs(pal); err != nil {
@@ -246,6 +275,7 @@ func (v *Checker) ValidateEvent(e inter.EventPayloadI) error {
 				}
 			}
 		}
+		//有效期内选择双重签名
 		if proof := mp.EpochVoteDoublesign; proof != nil {
 			for _, vote := range proof.Pair {
 				if err := v.ValidateEV(vote); err != nil {
@@ -262,13 +292,14 @@ func (v *Checker) ValidateEvent(e inter.EventPayloadI) error {
 		}
 	}
 	// pre-cache tx sig
+	//预 签名 缓存
 	for _, tx := range e.Txs() {
 		_, err := types.Sender(v.txSigner, tx)
 		if err != nil {
 			return ErrMalformedTxSig
 		}
 	}
-	// Payload hash
+	// Payload hash  域内的hash值
 	if e.PayloadHash() != inter.CalcPayloadHash(e) {
 		return ErrWrongPayloadHash
 	}
@@ -295,7 +326,9 @@ func (v *Checker) ValidateEvent(e inter.EventPayloadI) error {
 	return nil
 }
 
+// 事件检查的循环执行了
 func (v *Checker) loop() {
+	//开始进行计数
 	defer v.wg.Done()
 	for {
 		select {
